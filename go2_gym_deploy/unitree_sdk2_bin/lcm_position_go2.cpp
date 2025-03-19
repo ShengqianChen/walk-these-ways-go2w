@@ -99,34 +99,37 @@ public:
 
     void Init();
     void InitLowCmd();
-    void Loop();
-    void LowStateMessageHandler(const void* messages);
-    void JoystickHandler(const void *message);
-    void InitRobotStateClient();
+    void Loop(); 
+    void LowStateMessageHandler(const void* messages); // 机器人底层信号接收函数
+    void JoystickHandler(const void *message); // 遥控器信号接收函数
+    void InitRobotStateClient(); // 机器人状态初始化函数
     void activateService(const std::string& serviceName,int activate);
-    void lcm_send();
+    void lcm_send(); 
     void lcm_receive();
     void lcm_receive_Handler(const lcm::ReceiveBuffer *rbuf, const std::string & chan, const pd_tau_targets_lcmt* msg);
     void LowCmdWrite();
     void SetNominalPose();
     int queryServiceStatus(const std::string& serviceName);
 
-    leg_control_data_lcmt leg_control_lcm_data = {0};
-    state_estimator_lcmt body_state_simple = {0};
-    pd_tau_targets_lcmt joint_command_simple = {0};
-    rc_command_lcmt rc_command = {0};
+    // lcm的传输数据定义，可以在walk-these-ways-go2w/go2_gym_deploy/lcm_types目录下的.lcm文件中查看
+    leg_control_data_lcmt leg_control_lcm_data = {0}; // 腿部控制数据
+    state_estimator_lcmt body_state_simple = {0}; // 身体状态估计
+    pd_tau_targets_lcmt joint_command_simple = {0}; // 关节控制命令
+    rc_command_lcmt rc_command = {0}; // 遥控器命令控制
 
-    unitree_go::msg::dds_::LowState_ low_state{};
-    unitree_go::msg::dds_::LowCmd_ low_cmd{};     
-    unitree_go::msg::dds_::WirelessController_ joystick{};
-    unitree::robot::go2::RobotStateClient rsc;
+    unitree_go::msg::dds_::LowState_ low_state{}; // 获取电机数据
+    unitree_go::msg::dds_::LowCmd_ low_cmd{}; // 电机控制命令
+    unitree_go::msg::dds_::WirelessController_ joystick{}; // 无线控制命令
     
-    unitree::robot::ChannelPublisherPtr<unitree_go::msg::dds_::LowCmd_> lowcmd_publisher;
-    unitree::robot::ChannelSubscriberPtr<unitree_go::msg::dds_::LowState_> lowstate_subscriber;
-    unitree::robot::ChannelSubscriberPtr<unitree_go::msg::dds_::WirelessController_> joystick_suber;
-    lcm::LCM lc;
+    unitree::robot::go2::RobotStateClient rsc; // 机器人状态变量
     
-    xKeySwitchUnion key;
+    unitree::robot::ChannelPublisherPtr<unitree_go::msg::dds_::LowCmd_> lowcmd_publisher; // 电机控制命令发布
+    unitree::robot::ChannelSubscriberPtr<unitree_go::msg::dds_::LowState_> lowstate_subscriber; // 电机数据接收
+    unitree::robot::ChannelSubscriberPtr<unitree_go::msg::dds_::WirelessController_> joystick_suber; // 无线遥控器命令接收
+
+    lcm::LCM lc; // lcm
+    
+    xKeySwitchUnion key; // 遥控器键值
     int mode = 0;
     int motiontime = 0;
     float dt = 0.002; // unit [second]
@@ -144,7 +147,7 @@ void Custom::InitRobotStateClient()
 {
     rsc.SetTimeout(5.0f); 
     rsc.Init();
-}
+} // 看起来类似于初始化机器人状态的作用，官方文档没有给出这两个函数的作用
 
 int Custom::queryServiceStatus(const std::string& serviceName)
 {
@@ -171,12 +174,12 @@ int Custom::queryServiceStatus(const std::string& serviceName)
     }
     return serviceStatus;
     
-}
+} // 查询机器人状态的函数
 
 void Custom::activateService(const std::string& serviceName,int activate)
 {
     rsc.ServiceSwitch(serviceName, activate);  
-}
+} // 激活机器人状态的函数
 
 void Custom::LowStateMessageHandler(const void* message)
 {
@@ -198,25 +201,25 @@ void Custom::lcm_send(){
     // leg_control_lcm_data
     for (int i = 0; i < 12; i++)
     {
-        leg_control_lcm_data.q[i] = low_state.motor_state()[i].q();
-        leg_control_lcm_data.qd[i] = low_state.motor_state()[i].dq();
-        leg_control_lcm_data.tau_est[i] = low_state.motor_state()[i].tau_est();
-    }
+        leg_control_lcm_data.q[i] = low_state.motor_state()[i].q(); // 关机反馈位置信息：默认为弧度值（可按照实际情况改为角度值），可按照实际数值显示（弧度值范围：-7 - +7，显示3位小数）。
+        leg_control_lcm_data.qd[i] = low_state.motor_state()[i].dq(); // 关节反馈速度
+        leg_control_lcm_data.tau_est[i] = low_state.motor_state()[i].tau_est(); // 关节反馈力矩
+    } // g2只有12个电机，这里需要改
     // 从IMU读取姿态信息
     for(int i = 0; i < 4; i++){
         // 四元数
         body_state_simple.quat[i] = low_state.imu_state().quaternion()[i]; 
-    }
+    } // 接收机身姿态信息之实时的四元数信息（0-w, 1-x, 2-y, 3-z）（0-w, 1-x, 2-y, 3-z）
     for(int i = 0; i < 3; i++){
-        // roll pitch yaw
+        // 接收机身机身姿态信息之实时的欧拉角信息。（0-roll，1-pitch，2-yaw ）
         body_state_simple.rpy[i] = low_state.imu_state().rpy()[i];
-        // IMU 三轴加速度
+        // 接收机身机身姿态信息之实时的三轴加速度信息。（0-x, 1-y, 2-z）
         body_state_simple.aBody[i] = low_state.imu_state().accelerometer()[i];
-        // IMU 三轴线性加速度
+        // 接收机身机身姿态信息之实时的三轴角速度信息。（0-x, 1-y, 2-z）
         body_state_simple.omegaBody[i] = low_state.imu_state().gyroscope()[i];
     }
     for(int i = 0; i < 4; i++){
-        // 足端触地力
+        // 接收每条腿的足端力信息。顺序（0-FR，1-FL，2-RR, 3-RL）
         body_state_simple.contact_estimate[i] = low_state.foot_force()[i];
     }
     // 遥控器按键值和摇杆数值
@@ -248,11 +251,11 @@ void Custom::lcm_send(){
     }
 
     rc_command.mode = mode;
+    // 根据无线遥控器按键选择相应处理模式
 
-
-    lc.publish("leg_control_data", &leg_control_lcm_data);
-    lc.publish("state_estimator_data", &body_state_simple);
-    lc.publish("rc_command", &rc_command);
+    lc.publish("leg_control_data", &leg_control_lcm_data); // 发送机器人腿部电机数据到lcm
+    lc.publish("state_estimator_data", &body_state_simple); // 发送机器人身体部分数据到lcm
+    lc.publish("rc_command", &rc_command); // 发送无线遥控器数据到lcm
 
     // std::cout << "loop: messsages are sending ......" << std::endl;
 }
@@ -261,6 +264,7 @@ void Custom::lcm_send(){
 // -------------------------------------------------------------------------------
 // 线程 2 ： lcm receive 线程
 // 此线程作用：实时通过lcm中间件读取pytorch神经网络输出的期望关节控制信号（q, qd, kp, kd, tau_ff）
+// q 关节目标位置 dq 关节目标速度 tau 关节目标力矩 kp 关节刚度系数 kd 关节阻尼系数 
 // 查看 go2_gym_deploy/envs/lcm_agent.py 文件，可以知道：
 // 神经网络只输出期望的q，而kp，kd是可以自定义设置的, qd 和 tau_ff 被设置为0
 void Custom::lcm_receive_Handler(const lcm::ReceiveBuffer *rbuf, const std::string & chan, const pd_tau_targets_lcmt* msg){
@@ -292,7 +296,8 @@ void Custom::InitLowCmd()
     /*LowCmd 类型中有 20 个 motorCmd 成员，
     每一个成员的命令用于控制 Go2 机器人上相对应的一个电机，
     但 Go2 机器人上只有 12 个电机，
-    故仅有前 12 个有效，剩余的8个起保留作用。*/
+    故仅有前 12 个有效，剩余的8个起保留作用。
+    Go2w机器人上有16个电机，所以需要加上剩下的四个轮子*/
     for(int i=0; i<20; i++)
     {
         /*此行命令中将 motorCmd 成员的 mode 变量设置为 0x01，
@@ -310,7 +315,7 @@ void Custom::InitLowCmd()
 
 void Custom::SetNominalPose(){
     // 运行此cpp文件后，不仅是初始化通信
-    // 同样会在趴下时的初始化关节角度
+    // 同样会在趴下时初始化关节角度
     // 将各个电机都设置为位置模式
     for(int i = 0; i < 12; i++){
         joint_command_simple.qd_des[i] = 0;
@@ -319,7 +324,7 @@ void Custom::SetNominalPose(){
         joint_command_simple.kd[i] = 0.5; 
     }
 
-    // 趴下时的关节角度
+    // 趴下时的关节角度，go2w需要改参数
     joint_command_simple.q_des[0] = -0.3;
     joint_command_simple.q_des[1] = 1.2;
     joint_command_simple.q_des[2] = -2.721;
@@ -351,10 +356,11 @@ void Custom::LowCmdWrite(){
             key.components.L2 = 0;
         }
         _firstRun = false;
-    } 
+    } // 这里需要修改
 
     // 写了一段安全冗余代码
     // 当roll角超过限制，或pitch角超过限制，或遥控器按下L2+B键
+    // 这里roll角和pitch角是描述机器人身体数据的参数，所以g2w和g2应该是通用的，不做修改
     // if (  low_state.imu_state().rpy()[0] > 0.5 || low_state.imu_state().rpy()[1] > 0.5 || ((int)key.components.B==1 && (int)key.components.L2==1))
     if ( std::abs(low_state.imu_state().rpy()[0]) > 0.8 || std::abs(low_state.imu_state().rpy()[1]) > 0.8 || ((int)key.components.B==1 && (int)key.components.L2==1))
     {       
@@ -471,7 +477,7 @@ int main(int argc, char **argv)
     {
         std::cout << "Usage: " << argv[0] << " networkInterface" << std::endl;
         exit(-1);
-    }
+    } // 检查命令行参数正确性，确保参数合适
 
     std::cout << "Communication level is set to LOW-level." << std::endl
               << "WARNING: Make sure the robot is hung up." << std::endl
@@ -479,11 +485,13 @@ int main(int argc, char **argv)
               << "Press Enter to continue..." << std::endl;
     std::cin.ignore();
 
+    // 初始化Unitree机器人通信通道，传入计算机的网卡地址
     unitree::robot::ChannelFactory::Instance()->Init(0, argv[1]); // 传入本机的网卡地址（PC or Jetson Orin）
 
-    Custom custom;
+    Custom custom; // 创建自定义Custom对象用于控制机器人
 
-    custom.InitRobotStateClient();
+    custom.InitRobotStateClient(); // 初始化机器人状态
+
     if(custom.queryServiceStatus("sport_mode"))
     {
         std::cout<<"Trying to deactivate the service: " << "sport_mode" << std::endl;
@@ -497,10 +505,10 @@ int main(int argc, char **argv)
                   <<"next step is setting up communication" << std::endl
                   << "Press Enter to continue..." << std::endl;
         std::cin.ignore();
-    }
+    } // 这一步是反复确认机器人激活到了sport_mode，主运动控制服务，应该在这个状态下可以对电机底层进行控制
 
 
-    custom.Init();
+    custom.Init(); // 初始化2？
 
     std::cout<<"Communicatino is set up successfully" << std::endl;
     std::cout<<"LCM <<<------------>>> Unitree SDK2" << std::endl;
@@ -508,7 +516,7 @@ int main(int argc, char **argv)
     std::cout<<"------------------------------------" << std::endl;
     std::cout<<"Press L2+B if any unexpected error occurs" << std::endl;
 
-    custom.Loop();
+    custom.Loop(); // 进入主循环对机器人进行控制
 
     while (true)
     {
